@@ -1,0 +1,279 @@
+# A code to predict the stock prices
+# ver-2.0 dated 05-07-2021
+# Authored by - Rajveer Sharma, Avikshith Irukulla
+!pip install yahoo_fin
+!pip install plotly
+import pandas as pd
+import numpy as np
+import datetime 
+import time
+import plotly.graph_objects as go
+import plotly.express as px
+from yahoo_fin.stock_info import get_data
+from matplotlib import pyplot as plt
+from sklearn.linear_model import LinearRegression
+import openpyxl
+from google.colab import files
+import io
+uploaded = files.upload()
+
+wrkbk = openpyxl.load_workbook("Nifty_200.xlsx")
+sh = wrkbk.active
+def Fetch_data(ticker_name,start_date,end_date,interval):
+  ticker_info = {}
+  ticker_info = get_data(ticker, start_date=Start_date,end_date=End_date ,index_as_date = False, interval="1d") #  fetching histo data
+  ticker_info.drop(['adjclose','volume','ticker'], inplace=True, axis=1)  # removing extra column 
+  #print(ticker_info) 
+  #Plot_fun(ticker_info)
+  return ticker_info
+
+def month(n):
+   back_month=n
+
+   End_date = (datetime.datetime.today()+datetime.timedelta(days = 180)).strftime('%m/%d/%Y')
+
+   Start_date= (datetime.datetime.today() - datetime.timedelta(days = 180)).strftime('%m/%d/%Y')
+   return Start_date,End_date,back_month
+
+
+def Pick_points(ticker_info, back_month):
+  X1=[]
+  Y1=[] 
+  avg1=0
+  j1=7-back_month
+  appendY = 1000000
+  appendX = 0
+  i = 120 - float(back_month)*20 + 7
+  i1=i
+  while (i < len(ticker_info.date)):
+    price = ticker_info.low[i-4]
+    price1 = ticker_info.high[i-1]
+    price2 = ticker_info.high[i-2]
+    price3 = ticker_info.high[i-3]
+    priced1 = ticker_info.high[i-5]
+    priced2 = ticker_info.high[i-6]
+    priced3 = ticker_info.high[i-7]
+    max_before = max(price1,price2,price3)
+    max_after = max(priced1,priced2,priced3)
+    change = max_after + max_before - 2*price
+    if(change > 0.06*price and price < max_before and price < max_after and appendY > price ):
+      appendX = i-4
+      appendY = price
+    if(i > j1*20 + 7 and appendY != 1000000):
+      X1.append([appendX])
+      Y1.append([appendY])
+      appendY=1000000
+      j1=j1+back_month/6
+    i=i+1
+  if(appendY != 1000000):
+    X1.append([appendX])
+    Y1.append([appendY])
+
+
+
+  X2 = []
+  Y2 = [] 
+  i=i1
+  appendY = 0
+  appendX = 0
+  j2 = 7-back_month
+  while (i < len(ticker_info.date)):
+    price = ticker_info.high[i-4]
+    price1 = ticker_info.low[i-1]
+    price2 = ticker_info.low[i-2]
+    price3 = ticker_info.low[i-3]
+    priced1 = ticker_info.low[i-5]
+    priced2 = ticker_info.low[i-6]
+    priced3 = ticker_info.low[i-7]
+    min_before = min(price1,price2,price3)
+    min_after = min(priced1,priced2,priced3)
+    change = 2*price - min_before - min_after
+    if(change > 0.06*price and price > min_before and price > min_after and price > appendY):
+      appendX = i-4
+      appendY = price
+    if(i > j2*20 + 7 and appendY != 0):
+     X2.append([appendX])
+     Y2.append([appendY])
+     appendY=0
+     j2=j2+back_month/6
+    i=i+1
+  if(appendY != 0):
+    X2.append([appendX])
+    Y2.append([appendY])
+
+    
+  done=0
+  for x in range(3):
+    avg = ticker_info.low[i-1]/100
+    for see in range (1,len(X1)):
+      if(abs(Y1[see][0] - Y1[see-1][0]) > 10*avg):
+        print("Trend change")  
+        avg = ticker_info.low[i-1]/100
+        X1 = X1[see:]
+        Y1 = Y1[see:]
+        X2 = X2[see:]
+        Y2 = Y2[see:]
+        done =1
+        break
+      avg = avg +abs(Y1[see][0] - Y1[see-1][0])
+      avg = avg / see+1
+  if(done == 0):
+    for x in range(3):
+      avg = ticker_info.high[i-1]/100
+      for see in range (1,len(X2)):
+        if(abs(Y2[see][0] - Y2[see-1][0]) > 10*avg):
+          print("Trend change")  
+          avg = ticker_info.low[i-1]/100
+          X2 = X2[see:]
+          Y2 = Y2[see:]
+          X1 = X1[see:]
+          Y1 = Y1[see:]
+          break
+        avg = avg +abs(Y2[see][0] - Y2[see-1][0])
+        avg = avg / see+1
+
+  return X1,X2,Y1,Y2
+
+
+def Regression(X1,X2,Y1,Y2,ticker_info):
+  plt.scatter(X1,Y1,color='y')
+  plt.scatter(X2,Y2,color='g')
+
+  regressor2 = LinearRegression()
+  regressor2.fit(X2, Y2)
+  viz_test2 = plt
+  viz_test2.scatter(X2, Y2, color='red')
+  viz_test2.plot(X2, regressor2.predict(X2), color='black')
+  viz_test2.title('Price Prediction')
+  viz_test2.xlabel('DAYS')
+  viz_test2.ylabel('PRICE')
+
+
+  regressor1 = LinearRegression()
+  regressor1.fit(X1, Y1)
+  viz_test1 = plt
+  viz_test1.scatter(X1, Y1, color='green')
+  viz_test1.plot(X1, regressor1.predict(X1), color='black')
+  viz_test1.title('Price Prediction')
+  viz_test1.xlabel('DAYS')
+  viz_test1.ylabel('PRICE')
+
+  data_plt = plt
+  data_plt.plot(ticker_info.index,(ticker_info.low + ticker_info.high)/2, color='darkblue')
+  data_plt.title("Price Prediction")
+  data_plt.xlabel('Days')
+  data_plt.ylabel('PRICE')
+
+  flag=0
+  y_pred11 = regressor1.predict([[len(ticker_info.date)]])
+  y_pred1 = int(y_pred11)
+  #print("Current Support:",y_pred1)
+  price = ticker_info.close[len(ticker_info.date)-1]
+  price_top1 = y_pred1*1.01
+  price_bottom1 = y_pred1*0.99
+  price_br1 = y_pred1*0.97
+
+  if(price < price_top1 and price > price_bottom1 ):
+    flag=flag+1
+  if(price < price_br1):
+    flag=flag+2
+
+  y_pred22 = regressor2.predict([[len(ticker_info.date)]])
+  y_pred = int(y_pred22)
+  #print("Current Resistance:",y_pred)
+  price = ticker_info.close[len(ticker_info.date)-1]
+  price_top2 = y_pred*1.01
+  price_bottom2 = y_pred*0.99
+  price_br2 = y_pred*1.03
+
+  if(price < price_top2 and price > price_bottom2 ):
+    flag=flag+3
+  if(price > price_br2):
+    flag=flag+4
+
+  print("For the last",back_month,"months data")
+  plt.show()
+  print("Current Price:",price)
+  print("Current Support:",y_pred1)
+  print("Current Resistance:",y_pred)
+
+  return flag,y_pred1,y_pred,price
+
+
+
+if __name__=='__main__':
+  j = 18                                                           
+  n = 6
+  
+  BStockName=[]
+  BCurrentPrice=[]
+  BSupport=[]
+  BResistance=[]
+  BReason=[]
+  BGraph = []
+  BTrend=[]
+  SStockName=[]
+  SCurrentPrice=[]
+  SSupport=[]
+  SResistance=[]
+  SReason=[]
+  STrend=[]
+
+  wrkbk = openpyxl.load_workbook("Nifty_200.xlsx")
+  sh = wrkbk.active 
+
+  for number in range (10):
+   print(number+1)
+   trend = str(n)
+   trend = trend + "-months"
+   cell_tic = sh.cell(row=j, column=3)
+   ticker = cell_tic.value
+   j = j + 1
+   print(ticker[:-3])
+   Start_date,End_date,back_month = month(n)
+   ticker_info = Fetch_data(ticker,Start_date,End_date,"1d")
+   X1,X2,Y1,Y2 = Pick_points(ticker_info, back_month)
+   flag,y_pred1,y_pred,price = Regression(X1,X2,Y1,Y2,ticker_info)
+   
+
+   if(flag == 1 or flag >=4):
+     BStockName.append(ticker[:-3])
+     BCurrentPrice.append(price)
+     BSupport.append(y_pred1)
+     BResistance.append(y_pred)
+     BTrend.append(trend)
+     if(flag == 1):
+      BReason.append("Price Support")
+     if(flag == 4):
+      BReason.append("Price Breakout")
+     if(flag > 4):
+      BReason.append("Don't trade the price movement is unusual")
+
+   if(flag == 2 or flag ==3 or flag > 4):
+     SStockName.append(ticker[:-3])
+     SCurrentPrice.append(price)
+     SSupport.append(y_pred1)
+     SResistance.append(y_pred)
+     STrend.append(trend)
+     if(flag == 2):
+      SReason.append("Price Breakdown")
+     if(flag == 3):
+      SReason.append("Price Resistance")
+     if(flag > 4):
+      SReason.append("Don't trade the price movement is unusual")
+
+   time.sleep(1)
+   print()
+   
+
+  dict = {'Stock Ticker':BStockName,'Trend For':BTrend, 'Closing Price': BCurrentPrice, 'Support':BSupport, 'Resistance':BResistance, 'Reason':BReason} 
+  df = pd.DataFrame(dict)
+  print(df) 
+  df.to_csv('buy.csv', index=False)
+  #files.download('buy.csv')
+
+  dict = {'Stock Ticker':SStockName,'Trend For':STrend, 'Closing Price': SCurrentPrice, 'Support':SSupport, 'Resistance':SResistance, 'Reason':SReason} 
+  df = pd.DataFrame(dict)
+  print(df) 
+  df.to_csv('sell.csv', index=False)
+  #files.download('sell.csv')
